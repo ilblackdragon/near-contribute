@@ -156,3 +156,509 @@ pub fn upgrade() {
         sys::promise_return(promise_id);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::contribution::{
+        Contribution, VersionedContribution, VersionedContributionInvite,
+        VersionedContributionNeed, VersionedContributionRequest,
+    };
+    use crate::contributor::{ContributionType, VersionedContributor};
+    use crate::entity::{Entity, EntityKind, EntityStatus, Permission, VersionedEntity};
+    use near_sdk::json_types::U64;
+    use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId};
+
+    use crate::Contract;
+
+    #[test]
+    fn test_moderator_init() {
+        let owner_id: AccountId = "owner".parse().unwrap();
+
+        let contract = Contract::new(owner_id.clone());
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id)
+            .build());
+
+        contract.assert_moderator();
+    }
+
+    #[test]
+    fn test_check_moderator() {
+        let owner_id: AccountId = "owner".parse().unwrap();
+
+        let contract = Contract::new(owner_id.clone());
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        contract.check_is_moderator(owner_id);
+    }
+
+    #[test]
+    fn test_set_moderator() {
+        let owner_id: AccountId = "owner".parse().unwrap();
+
+        let mut contract = Contract::new(owner_id.clone());
+
+        let new_owner_id: AccountId = "new_owner".parse().unwrap();
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        contract.set_moderator(new_owner_id.clone());
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(new_owner_id.clone())
+            .build());
+
+        contract.check_is_moderator(new_owner_id);
+    }
+
+    #[test]
+    fn test_add_entity() {
+        let owner_id: AccountId = "owner".parse().unwrap();
+
+        let mut contract = Contract::new(owner_id.clone());
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        let entity_id: AccountId = "entity.near".parse().unwrap();
+        let entity_name = "entity name".to_string();
+        let entity_kind: EntityKind = EntityKind::Organization;
+        let start_date: U64 = near_sdk::json_types::U64(0);
+
+        contract.add_entity(
+            entity_id.clone(),
+            entity_name.clone(),
+            entity_kind.clone(),
+            start_date,
+        );
+
+        let entity = contract.get_entity(entity_id.clone());
+
+        assert_eq!(entity.name, entity_name);
+        assert_eq!(entity.kind, entity_kind);
+        assert_eq!(entity.start_date, 0);
+        assert_eq!(entity.status, EntityStatus::Active);
+    }
+
+    #[test]
+    fn test_add_multiple_entities() {
+        let owner_id: AccountId = "owner".parse().unwrap();
+
+        let mut contract = Contract::new(owner_id.clone());
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        let entity_id: AccountId = "entity".parse().unwrap();
+        let entity_name = "entity name".to_string();
+        let entity_kind: EntityKind = EntityKind::Organization;
+        let start_date: U64 = U64(0);
+
+        let entity_id_proj: AccountId = "project".parse().unwrap();
+        let entity_name_proj = "project name".to_string();
+        let entity_kind_proj: EntityKind = EntityKind::Project;
+        let start_date_proj: U64 = U64(1);
+
+        contract.add_entity(
+            entity_id.clone(),
+            entity_name.clone(),
+            entity_kind,
+            start_date,
+        );
+        contract.add_entity(
+            entity_id_proj.clone(),
+            entity_name_proj.clone(),
+            entity_kind_proj,
+            start_date_proj,
+        );
+
+        let entities = contract.get_entities(Some(0), Some(2));
+
+        let entity = entities[0].clone();
+        let entity_p = entities[1].clone();
+
+        assert!(entity.0 == entity_id);
+        assert!(entity.1.start_date == 0);
+        assert!(entity.1.kind == EntityKind::Organization);
+        assert!(entity.1.status == EntityStatus::Active);
+
+        assert!(entity_p.0 == entity_id_proj);
+        assert!(entity_p.1.start_date == 1);
+        assert!(entity_p.1.kind == EntityKind::Project);
+        assert!(entity_p.1.status == EntityStatus::Active);
+    }
+
+    #[test]
+    fn test_request_contribution() {
+        let owner_id: AccountId = "owner".parse().unwrap();
+
+        let mut contract = Contract::new(owner_id.clone());
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        let entity_id: AccountId = "entity".parse().unwrap();
+        let entity_name = "entity name".to_string();
+        let entity_kind: EntityKind = EntityKind::Organization;
+        let start_date: U64 = U64(0);
+
+        contract.add_entity(
+            entity_id.clone(),
+            entity_name.clone(),
+            entity_kind,
+            start_date,
+        );
+
+        let entity = contract.get_entity(entity_id.clone());
+
+        assert!(entity.start_date == 0);
+        assert!(entity.kind == EntityKind::Organization);
+        assert!(entity.status == EntityStatus::Active);
+
+        let contributor_id: AccountId = "contributor".parse().unwrap();
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(contributor_id.clone())
+            .build());
+
+        let description = "test description".to_string();
+        let contribution_type = ContributionType::Development;
+
+        contract.request_contribution(
+            entity_id.clone(),
+            description.clone(),
+            contribution_type.clone(),
+            None,
+        );
+
+        let contribution_req =
+            contract.get_contribution_request(entity_id.clone(), contributor_id.clone());
+
+        assert!(contribution_req.unwrap().description == description);
+    }
+
+    #[test]
+    fn test_approve_contribution() {
+        let owner_id: AccountId = "owner".parse().unwrap();
+
+        let mut contract = Contract::new(owner_id.clone());
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        let entity_id: AccountId = "entity".parse().unwrap();
+        let entity_name = "entity name".to_string();
+        let entity_kind: EntityKind = EntityKind::Organization;
+        let start_date: U64 = U64(0);
+
+        contract.add_entity(
+            entity_id.clone(),
+            entity_name.clone(),
+            entity_kind,
+            start_date,
+        );
+
+        let entity = contract.get_entity(entity_id.clone());
+
+        assert!(entity.start_date == 0);
+        assert!(entity.kind == EntityKind::Organization);
+        assert!(entity.status == EntityStatus::Active);
+
+        let contributor_id: AccountId = "contributor".parse().unwrap();
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(contributor_id.clone())
+            .build());
+
+        let description = "test description".to_string();
+        let contribution_type = ContributionType::Development;
+
+        contract.request_contribution(
+            entity_id.clone(),
+            description.clone(),
+            contribution_type.clone(),
+            None,
+        );
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        contract.approve_contribution(
+            entity_id.clone(),
+            contributor_id.clone(),
+            Some(description.clone()),
+            Some(U64(0)),
+        );
+
+        let contribution = contract.get_contribution(entity_id.clone(), contributor_id.clone());
+
+        assert!(!contribution.is_none());
+    }
+
+    #[test]
+    fn test_finish_contribution() {
+        let owner_id: AccountId = "owner".parse().unwrap();
+
+        let mut contract = Contract::new(owner_id.clone());
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        let entity_id: AccountId = "entity".parse().unwrap();
+        let entity_name = "entity name".to_string();
+        let entity_kind: EntityKind = EntityKind::Organization;
+        let start_date: U64 = U64(0);
+
+        contract.add_entity(
+            entity_id.clone(),
+            entity_name.clone(),
+            entity_kind,
+            start_date,
+        );
+
+        let entity = contract.get_entity(entity_id.clone());
+
+        assert!(entity.start_date == 0);
+        assert!(entity.name == entity_name);
+        assert!(entity.kind == EntityKind::Organization);
+        assert!(entity.status == EntityStatus::Active);
+
+        let contributor_id: AccountId = "contributor".parse().unwrap();
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(contributor_id.clone())
+            .build());
+
+        let description = "test description".to_string();
+        let contribution_type = ContributionType::Development;
+
+        contract.request_contribution(
+            entity_id.clone(),
+            description.clone(),
+            contribution_type,
+            None,
+        );
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        contract.approve_contribution(
+            entity_id.clone(),
+            contributor_id.clone(),
+            Some(description.clone()),
+            Some(U64(0)),
+        );
+
+        contract.finish_contribution(entity_id.clone(), contributor_id.clone(), U64(1));
+
+        let contribution = contract
+            .get_contribution(entity_id.clone(), contributor_id.clone())
+            .unwrap();
+
+        assert!(contribution.current.description == description.clone());
+        assert!(contribution.current.start_date == 0);
+        assert!(contribution.current.end_date.unwrap() == 1);
+    }
+
+    #[test]
+    fn test_get_contributors() {
+        let owner_id: AccountId = "owner".parse().unwrap();
+
+        let mut contract = Contract::new(owner_id.clone());
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        let entity_id: AccountId = "entity".parse().unwrap();
+        let entity_name = "entity name".to_string();
+        let entity_kind: EntityKind = EntityKind::Organization;
+        let start_date: U64 = U64(0);
+
+        contract.add_entity(
+            entity_id.clone(),
+            entity_name.clone(),
+            entity_kind,
+            start_date,
+        );
+
+        let entity = contract.get_entity(entity_id.clone());
+
+        assert!(entity.start_date == 0);
+        assert!(entity.name == entity_name);
+        assert!(entity.kind == EntityKind::Organization);
+        assert!(entity.status == EntityStatus::Active);
+
+        let contributor_id: AccountId = "contributor".parse().unwrap();
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(contributor_id.clone())
+            .build());
+
+        let description = "test description".to_string();
+        let contribution_type = ContributionType::Development;
+
+        contract.request_contribution(
+            entity_id.clone(),
+            description.clone(),
+            contribution_type,
+            None,
+        );
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        contract.approve_contribution(
+            entity_id.clone(),
+            contributor_id.clone(),
+            Some(description.clone()),
+            Some(U64(0)),
+        );
+
+        contract.finish_contribution(entity_id.clone(), contributor_id.clone(), U64(1));
+
+        let contributors = contract.get_contributors();
+
+        // Check if contributors show owner of entity and contributer
+        assert_eq!(contributors.len(), 2);
+        assert!(contributors.contains(&contributor_id));
+        assert!(contributors.contains(&owner_id));
+    }
+
+    #[test]
+    fn test_assert_manager_or_higher() {
+        let owner_id: AccountId = "owner".parse().unwrap();
+
+        let mut contract = Contract::new(owner_id.clone());
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        let entity_id: AccountId = "entity".parse().unwrap();
+        let entity_name = "entity name".to_string();
+        let entity_kind: EntityKind = EntityKind::Organization;
+        let start_date: U64 = U64(0);
+
+        contract.add_entity(
+            entity_id.clone(),
+            entity_name.clone(),
+            entity_kind,
+            start_date,
+        );
+
+        let entity = contract.get_entity(entity_id.clone());
+
+        assert!(entity.start_date == 0);
+        assert!(entity.name == entity_name);
+        assert!(entity.kind == EntityKind::Organization);
+        assert!(entity.status == EntityStatus::Active);
+
+        let contributor_id: AccountId = "contributor".parse().unwrap();
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(contributor_id.clone())
+            .build());
+
+        let description = "test description".to_string();
+        let contribution_type = ContributionType::Development;
+
+        contract.request_contribution(
+            entity_id.clone(),
+            description.clone(),
+            contribution_type,
+            None,
+        );
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        contract.approve_contribution(
+            entity_id.clone(),
+            contributor_id.clone(),
+            Some(description.clone()),
+            Some(U64(0)),
+        );
+
+        contract.finish_contribution(entity_id.clone(), contributor_id.clone(), U64(1));
+
+        contract.assert_manager_or_higher(&entity_id, &owner_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_NO_PERMISSION")]
+    fn test_assert_manager_or_higher_fail() {
+        let owner_id: AccountId = "owner".parse().unwrap();
+
+        let mut contract = Contract::new(owner_id.clone());
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        let entity_id: AccountId = "entity".parse().unwrap();
+        let entity_name = "entity name".to_string();
+        let entity_kind: EntityKind = EntityKind::Organization;
+        let start_date: U64 = U64(0);
+
+        contract.add_entity(
+            entity_id.clone(),
+            entity_name.clone(),
+            entity_kind,
+            start_date,
+        );
+
+        let entity = contract.get_entity(entity_id.clone());
+
+        assert!(entity.start_date == 0);
+        assert!(entity.name == entity_name);
+        assert!(entity.kind == EntityKind::Organization);
+        assert!(entity.status == EntityStatus::Active);
+
+        let contributor_id: AccountId = "contributor".parse().unwrap();
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(contributor_id.clone())
+            .build());
+
+        let description = "test description".to_string();
+        let contribution_type = ContributionType::Development;
+
+        contract.request_contribution(
+            entity_id.clone(),
+            description.clone(),
+            contribution_type,
+            None,
+        );
+
+        testing_env!(VMContextBuilder::new()
+            .predecessor_account_id(owner_id.clone())
+            .build());
+
+        contract.approve_contribution(
+            entity_id.clone(),
+            contributor_id.clone(),
+            Some(description.clone()),
+            Some(U64(0)),
+        );
+
+        contract.finish_contribution(entity_id.clone(), contributor_id.clone(), U64(1));
+
+        contract.assert_manager_or_higher(&entity_id, &contributor_id);
+    }
+}
