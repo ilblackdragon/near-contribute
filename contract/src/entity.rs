@@ -5,8 +5,8 @@ use near_sdk::{env, near_bindgen, AccountId, Timestamp};
 use std::collections::{HashMap, HashSet};
 
 use crate::contribution::{
-    Contribution, ContributionDetail, ContributionInvite, VersionedContribution,
-    VersionedContributionInvite,
+    Contribution, ContributionDetail, ContributionInvite, ContributionRequest,
+    VersionedContribution, VersionedContributionInvite, VersionedContributionRequest,
 };
 use crate::contributor::{ContributionType, VersionedContributor};
 use crate::dec_serde::{option_u64_dec_format, u64_dec_format};
@@ -160,7 +160,68 @@ impl Contract {
         .emit();
     }
 
-    /// Moderator updates the entity details.
+    /// Claim an entity.
+    pub fn request_claim_entity(&mut self, account_id: AccountId) {
+        self.requests.insert(
+            (account_id, env::predecessor_account_id()),
+            VersionedContributionRequest::Current(ContributionRequest {
+                description: "".to_string(),
+                contribution_type: ContributionType::Founding,
+                need: None,
+            }),
+        );
+    }
+
+    /// Approve a claim request.
+    pub fn approve_claim_entity(
+        &mut self,
+        entity_id: AccountId,
+        contributor_id: AccountId,
+        start_date: U64,
+        remove_current: bool,
+    ) {
+        self.assert_manager_or_higher(&entity_id, &env::predecessor_account_id());
+        let Some(request) = self.requests.remove(&(entity_id.clone(), contributor_id.clone())) else {
+            env::panic_str("ERR_NO_REQUEST");
+        };
+        let request = ContributionRequest::from(request);
+        let contribution_detail = ContributionDetail {
+            description: request.description,
+            contribution_type: request.contribution_type,
+            need: None,
+            start_date: start_date.into(),
+            end_date: None,
+        };
+        let permissions = HashSet::from_iter([Permission::Admin]);
+        self.contributions
+            .entry((entity_id.clone(), contributor_id.clone()))
+            .and_modify(|v_old| {
+                let old = Contribution::from(v_old.clone());
+                *v_old = VersionedContribution::Current(old.add_detail(
+                    start_date.into(),
+                    contribution_detail.clone(),
+                    Some(permissions.clone()),
+                ));
+            })
+            .or_insert(VersionedContribution::Current(Contribution {
+                permissions,
+                current: contribution_detail,
+                history: vec![],
+            }));
+        if remove_current {
+            self.contributions
+                .remove(&(entity_id.clone(), env::predecessor_account_id()));
+        }
+        Events::ClaimEntity {
+            entity_id,
+            contributor_id,
+            approver_id: env::predecessor_account_id(),
+            start_date: start_date.into(),
+        }
+        .emit();
+    }
+
+    /// Admin or moderator updates the entity details.
     pub fn set_entity(&mut self, account_id: AccountId, entity: Entity) {
         self.assert_manager_or_higher(&account_id, &env::predecessor_account_id());
         self.entities

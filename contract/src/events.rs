@@ -59,6 +59,13 @@ pub enum Events {
         #[serde(with = "u64_dec_format")]
         start_date: Timestamp,
     },
+    ClaimEntity {
+        entity_id: AccountId,
+        contributor_id: AccountId,
+        approver_id: AccountId,
+        #[serde(with = "u64_dec_format")]
+        start_date: Timestamp,
+    },
 }
 
 impl Events {
