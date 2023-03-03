@@ -221,6 +221,13 @@ impl Contract {
         .emit();
     }
 
+    /// Reject a claim request.
+    pub fn reject_claim_entity(&mut self, entity_id: AccountId, contributor_id: AccountId) {
+        self.assert_manager_or_higher(&entity_id, &env::predecessor_account_id());
+        self.requests
+            .remove(&(entity_id.clone(), contributor_id.clone()));
+    }
+
     /// Admin or moderator updates the entity details.
     pub fn set_entity(&mut self, account_id: AccountId, entity: Entity) {
         self.assert_manager_or_higher(&account_id, &env::predecessor_account_id());
