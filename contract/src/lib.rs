@@ -159,12 +159,14 @@ pub fn upgrade() {
 
 #[cfg(test)]
 mod tests {
-    use crate::contribution::{
-        Contribution, VersionedContribution, VersionedContributionInvite,
-        VersionedContributionNeed, VersionedContributionRequest,
+    // use crate::contribution::{
+    //     Contribution, VersionedContribution, VersionedContributionInvite,
+    //     VersionedContributionNeed, VersionedContributionRequest,
+    // };
+    use crate::contributor::ContributionType;
+    use crate::entity::{
+        /* Entity,  */ EntityKind, EntityStatus, /* Permission, VersionedEntity */
     };
-    use crate::contributor::{ContributionType, VersionedContributor};
-    use crate::entity::{Entity, EntityKind, EntityStatus, Permission, VersionedEntity};
     use near_sdk::json_types::U64;
     use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId};
 
@@ -205,7 +207,7 @@ mod tests {
         let new_owner_id: AccountId = "new_owner".parse().unwrap();
 
         testing_env!(VMContextBuilder::new()
-            .predecessor_account_id(owner_id.clone())
+            .predecessor_account_id(owner_id)
             .build());
 
         contract.set_moderator(new_owner_id.clone());
@@ -224,7 +226,7 @@ mod tests {
         let mut contract = Contract::new(owner_id.clone());
 
         testing_env!(VMContextBuilder::new()
-            .predecessor_account_id(owner_id.clone())
+            .predecessor_account_id(owner_id)
             .build());
 
         let entity_id: AccountId = "entity.near".parse().unwrap();
@@ -239,7 +241,7 @@ mod tests {
             start_date,
         );
 
-        let entity = contract.get_entity(entity_id.clone());
+        let entity = contract.get_entity(entity_id);
 
         assert_eq!(entity.name, entity_name);
         assert_eq!(entity.kind, entity_kind);
@@ -254,7 +256,7 @@ mod tests {
         let mut contract = Contract::new(owner_id.clone());
 
         testing_env!(VMContextBuilder::new()
-            .predecessor_account_id(owner_id.clone())
+            .predecessor_account_id(owner_id)
             .build());
 
         let entity_id: AccountId = "entity".parse().unwrap();
@@ -267,33 +269,28 @@ mod tests {
         let entity_kind_proj: EntityKind = EntityKind::Project;
         let start_date_proj: U64 = U64(1);
 
-        contract.add_entity(
-            entity_id.clone(),
-            entity_name.clone(),
-            entity_kind,
-            start_date,
-        );
+        contract.add_entity(entity_id.clone(), entity_name, entity_kind, start_date);
         contract.add_entity(
             entity_id_proj.clone(),
-            entity_name_proj.clone(),
+            entity_name_proj,
             entity_kind_proj,
             start_date_proj,
         );
 
         let entities = contract.get_entities(Some(0), Some(2));
 
-        let entity = entities[0].clone();
-        let entity_p = entities[1].clone();
+        let (first_id, first_entity) = entities.first().unwrap();
+        let (second_id, second_entity) = entities.last().unwrap();
 
-        assert!(entity.0 == entity_id);
-        assert!(entity.1.start_date == 0);
-        assert!(entity.1.kind == EntityKind::Organization);
-        assert!(entity.1.status == EntityStatus::Active);
+        assert!(first_id == &entity_id);
+        assert!(first_entity.start_date == 0);
+        assert!(first_entity.kind == EntityKind::Organization);
+        assert!(first_entity.status == EntityStatus::Active);
 
-        assert!(entity_p.0 == entity_id_proj);
-        assert!(entity_p.1.start_date == 1);
-        assert!(entity_p.1.kind == EntityKind::Project);
-        assert!(entity_p.1.status == EntityStatus::Active);
+        assert!(second_id == &entity_id_proj);
+        assert!(second_entity.start_date == 1);
+        assert!(second_entity.kind == EntityKind::Project);
+        assert!(second_entity.status == EntityStatus::Active);
     }
 
     #[test]
@@ -303,7 +300,7 @@ mod tests {
         let mut contract = Contract::new(owner_id.clone());
 
         testing_env!(VMContextBuilder::new()
-            .predecessor_account_id(owner_id.clone())
+            .predecessor_account_id(owner_id)
             .build());
 
         let entity_id: AccountId = "entity".parse().unwrap();
@@ -311,12 +308,7 @@ mod tests {
         let entity_kind: EntityKind = EntityKind::Organization;
         let start_date: U64 = U64(0);
 
-        contract.add_entity(
-            entity_id.clone(),
-            entity_name.clone(),
-            entity_kind,
-            start_date,
-        );
+        contract.add_entity(entity_id.clone(), entity_name, entity_kind, start_date);
 
         let entity = contract.get_entity(entity_id.clone());
 
@@ -336,12 +328,11 @@ mod tests {
         contract.request_contribution(
             entity_id.clone(),
             description.clone(),
-            contribution_type.clone(),
+            contribution_type,
             None,
         );
 
-        let contribution_req =
-            contract.get_contribution_request(entity_id.clone(), contributor_id.clone());
+        let contribution_req = contract.get_contribution_request(entity_id, contributor_id);
 
         assert!(contribution_req.unwrap().description == description);
     }
@@ -361,12 +352,7 @@ mod tests {
         let entity_kind: EntityKind = EntityKind::Organization;
         let start_date: U64 = U64(0);
 
-        contract.add_entity(
-            entity_id.clone(),
-            entity_name.clone(),
-            entity_kind,
-            start_date,
-        );
+        contract.add_entity(entity_id.clone(), entity_name, entity_kind, start_date);
 
         let entity = contract.get_entity(entity_id.clone());
 
@@ -386,24 +372,24 @@ mod tests {
         contract.request_contribution(
             entity_id.clone(),
             description.clone(),
-            contribution_type.clone(),
+            contribution_type,
             None,
         );
 
         testing_env!(VMContextBuilder::new()
-            .predecessor_account_id(owner_id.clone())
+            .predecessor_account_id(owner_id)
             .build());
 
         contract.approve_contribution(
             entity_id.clone(),
             contributor_id.clone(),
-            Some(description.clone()),
+            Some(description),
             Some(U64(0)),
         );
 
-        let contribution = contract.get_contribution(entity_id.clone(), contributor_id.clone());
+        let contribution = contract.get_contribution(entity_id, contributor_id);
 
-        assert!(!contribution.is_none());
+        assert!(contribution.is_some());
     }
 
     #[test]
@@ -452,7 +438,7 @@ mod tests {
         );
 
         testing_env!(VMContextBuilder::new()
-            .predecessor_account_id(owner_id.clone())
+            .predecessor_account_id(owner_id)
             .build());
 
         contract.approve_contribution(
@@ -465,10 +451,10 @@ mod tests {
         contract.finish_contribution(entity_id.clone(), contributor_id.clone(), U64(1));
 
         let contribution = contract
-            .get_contribution(entity_id.clone(), contributor_id.clone())
+            .get_contribution(entity_id, contributor_id)
             .unwrap();
 
-        assert!(contribution.current.description == description.clone());
+        assert!(contribution.current.description == description);
         assert!(contribution.current.start_date == 0);
         assert!(contribution.current.end_date.unwrap() == 1);
     }
@@ -525,11 +511,11 @@ mod tests {
         contract.approve_contribution(
             entity_id.clone(),
             contributor_id.clone(),
-            Some(description.clone()),
+            Some(description),
             Some(U64(0)),
         );
 
-        contract.finish_contribution(entity_id.clone(), contributor_id.clone(), U64(1));
+        contract.finish_contribution(entity_id, contributor_id.clone(), U64(1));
 
         let contributors = contract.get_contributors();
 
@@ -591,11 +577,11 @@ mod tests {
         contract.approve_contribution(
             entity_id.clone(),
             contributor_id.clone(),
-            Some(description.clone()),
+            Some(description),
             Some(U64(0)),
         );
 
-        contract.finish_contribution(entity_id.clone(), contributor_id.clone(), U64(1));
+        contract.finish_contribution(entity_id.clone(), contributor_id, U64(1));
 
         contract.assert_manager_or_higher(&entity_id, &owner_id);
     }
@@ -647,13 +633,13 @@ mod tests {
         );
 
         testing_env!(VMContextBuilder::new()
-            .predecessor_account_id(owner_id.clone())
+            .predecessor_account_id(owner_id)
             .build());
 
         contract.approve_contribution(
             entity_id.clone(),
             contributor_id.clone(),
-            Some(description.clone()),
+            Some(description),
             Some(U64(0)),
         );
 
