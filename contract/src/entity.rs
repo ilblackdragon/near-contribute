@@ -21,6 +21,7 @@ use crate::{Contract, ContractExt};
 pub enum EntityStatus {
     Active,
     Flagged,
+    NonVerified,
 }
 
 /// An entity can take different shapes, and currently we can categorize them in these types.
@@ -131,7 +132,7 @@ impl Contract {
             account_id.clone(),
             VersionedEntity::Current(Entity {
                 name,
-                status: EntityStatus::Active,
+                status: EntityStatus::NonVerified,
                 kind,
                 start_date: start_date.into(),
                 end_date: None,
@@ -160,9 +161,43 @@ impl Contract {
         .emit();
     }
 
+    /// Admin updates entity details.
+    pub fn edit_entity(
+        &mut self,
+        account_id: AccountId,
+        name: Option<String>,
+        kind: Option<EntityKind>,
+        start_date: Option<U64>,
+        end_date: Option<U64>,
+    ) {
+        self.assert_manager_or_higher(&account_id, &env::predecessor_account_id());
+        self.entities.entry(account_id).and_modify(|v_old| {
+            let old = Entity::from(v_old.clone());
+            *v_old = VersionedEntity::Current(Entity {
+                name: name.unwrap_or(old.name),
+                kind: kind.unwrap_or(old.kind),
+                start_date: start_date.map(|v| v.into()).unwrap_or(old.start_date),
+                end_date: end_date.map(|v| v.into()).or(old.end_date),
+                status: old.status,
+            });
+        });
+    }
+
+    /// Verify entity.
+    pub fn verify_entity(&mut self, account_id: AccountId) {
+        self.assert_moderator();
+        self.entities.entry(account_id).and_modify(|v_old| {
+            let old = Entity::from(v_old.clone());
+            *v_old = VersionedEntity::Current(Entity {
+                status: EntityStatus::Active,
+                ..old
+            });
+        });
+    }
+
     /// Moderator updates the entity details.
     pub fn set_entity(&mut self, account_id: AccountId, entity: Entity) {
-        self.assert_manager_or_higher(&account_id, &env::predecessor_account_id());
+        self.assert_moderator();
         self.entities
             .insert(account_id, VersionedEntity::Current(entity));
     }
