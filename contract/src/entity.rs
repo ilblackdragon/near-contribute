@@ -16,7 +16,7 @@ use crate::{Contract, ContractExt};
 /// An entity can be in different states because it can potentially have an end (through different
 /// ways - legal issues, no funding...).
 /// This is represented by the EntityStatus.
-#[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize, Clone, PartialEq, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub enum EntityStatus {
     Active,
@@ -25,7 +25,7 @@ pub enum EntityStatus {
 
 /// An entity can take different shapes, and currently we can categorize them in these types.
 #[allow(clippy::upper_case_acronyms)]
-#[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize, Clone, PartialEq, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub enum EntityKind {
     Project,
@@ -50,7 +50,7 @@ pub struct Entity {
     start_date: Timestamp,
     /// The end date of the entity. (optional)
     #[serde(with = "option_u64_dec_format")]
-    end_date: Option<Timestamp>,
+    pub end_date: Option<Timestamp>,
 }
 
 /// Permissions table for interaction between a contributor and an entity.
